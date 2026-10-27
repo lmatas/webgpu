@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat local con Gemma 2B · web-llm</title>
+<meta name="description" content="Gemma 2B corriendo por completo en tu navegador con web-llm y WebGPU. Sin servidores.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5' fill='%232F5D46'/%3E%3Cpath d='M15.5 15.5 21 21' stroke='%23A05423' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+/* ============================================================
+   Chat local con Gemma 2B — demo de web-llm en un solo archivo
+   Identidad visual: cuaderno de instrumento. Papel frío, tinta
+   verdosa, verde viridiana para las acciones y cobre para la
+   "energía" del modelo (descarga, streaming, velocidad).
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --papel: #F3F4EF;
+  --papel-2: #ECEDE5;
+  --blanco: #FDFDFB;
+  --tinta: #20281F;
+  --tinta-suave: #57604F;
+  --verde: #2F5D46;
+  --verde-oscuro: #25493A;
+  --cobre: #A05423;
+  --cobre-suave: #A0542322;
+  --linea: #D4D7CB;
+  --radio: 10px;
+  --serif: "Charter", "Iowan Old Style", "Bitstream Charter", Georgia, serif;
+  --sans: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--papel);
+  color: var(--tinta);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100dvh;
+}
+
+/* ---------- Cabecera ---------- */
+.cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--linea);
+  background: var(--papel);
+}
+.cabecera h1 {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.cabecera .subtitulo {
+  color: var(--tinta-suave);
+  font-size: 12.5px;
+  margin: 0;
+}
+#btn-controles-movil { display: none; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--linea);
+  background: var(--blanco);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  color: var(--tinta-suave);
+  white-space: nowrap;
+}
+.chip::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--linea);
+  flex: none;
+}
+.chip[data-estado="lista"]::before { background: var(--verde); }
+.chip[data-estado="cargando"]::before,
+.chip[data-estado="generando"]::before { background: var(--cobre); }
+.chip[data-estado="sin-webgpu"]::before,
+.chip[data-estado="error"]::before { background: #B33A2B; }
+
+/* ---------- Reparto en dos columnas ---------- */
+.escenario {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 316px;
+  min-height: 0;
+}
+.columna-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ---------- Portada (antes de cargar el modelo) ---------- */
+.vista-portada {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+  overflow: auto;
+}
+.portada { max-width: 560px; width: 100%; }
+.portada h2 {
+  font-family: var(--serif);
+  font-size: clamp(30px, 4.6vw, 44px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin: 0 0 14px;
+}
+.portada .promesa {
+  color: var(--tinta-suave);
+  font-size: 15.5px;
+  max-width: 46ch;
+  margin: 0 0 26px;
+}
+.fila-carga {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.fila-carga select { flex: 1; min-width: 230px; }
+.nota-pie {
+  color: var(--tinta-suave);
+  font-size: 12.5px;
+  margin: 14px 0 0;
+}
+.nota-pie code { font-family: var(--mono); font-size: 11.5px; }
+
+/* ---------- Banco de carga (descarga del modelo) ---------- */
+.vista-carga {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+}
+.banco-carga { max-width: 560px; width: 100%; }
+.porcentaje-gigante {
+  font-family: var(--serif);
+  font-size: clamp(64px, 11vw, 104px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.porcentaje-gigante .simbolo {
+  color: var(--cobre);
+  font-size: 0.55em;
+}
+.barra {
+  position: relative;
+  height: 6px;
+  background: var(--linea);
+  border-radius: 3px;
+  margin: 22px 0 10px;
+  overflow: hidden;
+}
+.barra .relleno {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: var(--cobre);
+  border-radius: 3px;
+  transition: width .25s ease;
+}
+@media (prefers-reduced-motion: reduce) { .barra .relleno { transition: none; } }
+.ticks {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 14px;
+}
+.ticks span {
+  height: 10px;
+  flex: 1;
+  background: var(--linea);
+  border-radius: 2px;
+}
+.ticks span.lleno { background: var(--cobre); opacity: .75; }
+.estado-bruto {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin: 6px 0 18px;
+  overflow-wrap: anywhere;
+}
+.banco-carga .nota-pie { margin-top: 18px; }
+
+/* ---------- Aviso (errores, contexto, arranque) ---------- */
+.aviso {
+  border: 1px solid var(--cobre);
+  background: var(--cobre-suave);
+  border-radius: var(--radio);
+  padding: 12px 16px;
+  margin: 0 auto 18px;
+  max-width: 560px;
+  font-size: 14px;
+}
+.aviso p { margin: 0; }
+.aviso p + p { margin-top: 6px; color: var(--tinta-suave); font-size: 13px; }
+
+/* ---------- Conversación ---------- */
+.chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 26px 22px 10px;
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) { .chat { scroll-behavior: auto; } }
+.chat-vacio {
+  text-align: center;
+  color: var(--tinta-suave);
+  padding: 30px 0 10px;
+  font-size: 14px;
+}
+.sugerencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+  padding-bottom: 20px;
+}
+.sugerencias button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--verde);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: 999px;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.sugerencias button:hover { border-color: var(--verde); }
+
+.mensaje { margin-bottom: 22px; max-width: 720px; }
+.mensaje .quien {
+  font-size: 11.5px;
+  color: var(--tinta-suave);
+  margin-bottom: 5px;
+  letter-spacing: 0;
+}
+.mensaje.usuario {
+  margin-left: auto;
+  width: fit-content;
+  max-width: min(85%, 560px);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: 14px 14px 4px 14px;
+  padding: 10px 15px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.mensaje.ia .texto {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.mensaje.ia .texto:empty::before { content: "…"; color: var(--tinta-suave); }
+.mensaje.ia.escribiendo .texto::after {
+  content: "▍";
+  color: var(--cobre);
+  animation: latido 1s steps(2) infinite;
+}
+@keyframes latido { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .mensaje.ia.escribiendo .texto::after { animation: none; }
+}
+.mensaje .pie-ia {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin-top: 6px;
+}
+.mensaje .pie-ia.detenido { color: var(--cobre); }
+
+/* ---------- Zona de escritura ---------- */
+.escritor {
+  padding: 14px 22px 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  background: var(--papel);
+}
+.escritor textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  color: var(--tinta);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 11px 14px;
+  min-height: 46px;
+  max-height: 140px;
+  outline: none;
+}
+.escritor textarea:focus-visible { border-color: var(--verde); }
+.escritor textarea:disabled { color: var(--tinta-suave); background: var(--papel-2); }
+.escritor textarea::placeholder { color: #9AA092; }
+
+.boton {
+  font: inherit;
+  font-size: 14px;
+  border-radius: var(--radio);
+  padding: 10px 18px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.boton:disabled { opacity: .45; cursor: not-allowed; }
+.boton-primario { background: var(--verde); color: #FDFDFB; }
+.boton-primario:hover:not(:disabled) { background: var(--verde-oscuro); }
+.boton-secundario {
+  background: var(--blanco);
+  color: var(--verde);
+  border-color: var(--linea);
+}
+.boton-secundario:hover:not(:disabled) { border-color: var(--verde); }
+.boton-cobre {
+  background: var(--blanco);
+  color: var(--cobre);
+  border-color: var(--cobre);
+}
+.boton-cobre:hover:not(:disabled) { background: var(--cobre-suave); }
+.boton:focus-visible { outline: 2px solid var(--cobre); outline-offset: 2px; }
+#btn-parar { display: none; }
+.escritor.generando #btn-enviar { display: none; }
+.escritor.generando #btn-parar { display: inline-block; }
+
+/* ---------- Barra de búsqueda web ---------- */
+.barra-busqueda {
+  border-top: 1px solid var(--linea);
+  padding: 11px 22px 0;
+  background: var(--papel);
+}
+.interruptor {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--tinta-suave);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: 999px;
+  padding: 6px 13px;
+  cursor: pointer;
+}
+.interruptor svg { width: 13px; height: 13px; flex: none; }
+.interruptor.activa { color: var(--verde); border-color: var(--verde); }
+.interruptor:focus-visible { outline: 2px solid var(--cobre); outline-offset: 2px; }
+
+/* ---------- Estado de búsqueda y fuentes ---------- */
+.buscando-estado {
+  font-size: 13px;
+  color: var(--cobre);
+  margin-top: 2px;
+  animation: latido 1.1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) { .buscando-estado { animation: none; } }
+.fuentes { margin-top: 10px; }
+.fuentes .titulo-fuentes {
+  font-size: 11.5px;
+  color: var(--tinta-suave);
+  margin-bottom: 3px;
+}
+.fuentes ol { margin: 0; padding-left: 18px; }
+.fuentes li { font-size: 12.5px; line-height: 1.45; margin-bottom: 2px; }
+.fuentes a { overflow-wrap: anywhere; }
+
+/* ---------- Panel de instrumentos ---------- */
+.panel {
+  border-left: 1px solid var(--linea);
+  background: var(--papel-2);
+  padding: 18px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.panel h3 {
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 22px 0 9px;
+  padding-top: 18px;
+  border-top: 1px solid var(--linea);
+}
+.panel h3:first-of-type { margin-top: 4px; border-top: none; padding-top: 0; }
+.panel select,
+.panel textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--tinta);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 8px 10px;
+}
+.panel select:focus-visible,
+.panel textarea:focus-visible,
+.panel input:focus-visible { outline: 2px solid var(--cobre); outline-offset: 1px; border-color: var(--verde); }
+.panel textarea { resize: vertical; min-height: 68px; }
+.panel .ayuda-modelo {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin: 7px 0 10px;
+}
+.panel .boton { width: 100%; }
+
+.parametro { margin-bottom: 12px; }
+.parametro .etiqueta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.parametro .valor { font-family: var(--mono); font-size: 12.5px; color: var(--verde); }
+.parametro input[type="range"] {
+  width: 100%;
+  accent-color: var(--verde);
+  margin: 0;
+}
+
+.medidor {
+  font-size: 13px;
+}
+.medidor dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 14px;
+  margin: 0;
+}
+.medidor dt { color: var(--tinta-suave); }
+.medidor dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.linea-gpu {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin: 12px 0 0;
+}
+.linea-gpu strong { color: var(--tinta); font-weight: 600; }
+
+.panel .enlaces {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--linea);
+}
+.panel .enlaces a { color: var(--verde); }
+a { color: var(--verde); }
+
+/* ---------- Móvil ---------- */
+@media (max-width: 880px) {
+  .cabecera { flex-wrap: wrap; row-gap: 8px; }
+  .cabecera > div:first-child { min-width: 0; }
+  .escenario { grid-template-columns: 1fr; }
+  .panel {
+    display: none;
+    border-left: none;
+    border-top: 1px solid var(--linea);
+  }
+  .panel.abierto { display: block; }
+  #btn-controles-movil { display: inline-block; }
+  .columna-chat { min-height: 78dvh; }
+  .chat { padding: 20px 16px 10px; }
+  .barra-busqueda { padding: 10px 16px 0; }
+  .escritor { padding: 12px 16px 14px; }
+}
+</style>
+</head>
+<body>
+
+<header class="cabecera">
+  <div>
+    <h1>Chat local con Gemma 2B</h1>
+    <p class="subtitulo">Todo corre en tu equipo con WebGPU, sin servidores.</p>
+  </div>
+  <span class="chip" id="chip-estado" data-estado="arrancando" aria-live="polite">Preparando…</span>
+  <button class="boton boton-secundario" id="btn-controles-movil" type="button">Controles</button>
+</header>
+
+<main class="escenario">
+
+  <!-- ======== Columna de conversación ======== -->
+  <section class="columna-chat" aria-label="Conversación">
+
+    <!-- Portada: se muestra antes de cargar el modelo -->
+    <div class="vista-portada" id="vista-portada" hidden>
+      <div class="portada">
+        <h2>Un modelo de lenguaje corriendo dentro de tu navegador.</h2>
+        <p class="promesa">
+          Esta página no consulta ningún servidor: cuando cargas un modelo, sus pesos
+          se descargan una sola vez y a partir de ahí la IA entera vive en la memoria
+          de tu GPU y responde en tu propio equipo.
+        </p>
+        <div class="fila-carga">
+          <select id="select-modelo" aria-label="Modelo para cargar"></select>
+          <button class="boton boton-primario" id="btn-cargar" type="button">Cargar modelo</button>
+        </div>
+        <p class="nota-pie" id="nota-modelo">La primera carga descarga los pesos y tarda un rato;
+          después quedan guardados en la caché del navegador y arranca en segundos.</p>
+      </div>
+    </div>
+
+    <!-- Banco de carga: progreso de descarga -->
+    <div class="vista-carga" id="vista-carga" hidden>
+      <div class="banco-carga">
+        <div class="porcentaje-gigante"><span id="carga-pct">0</span><span class="simbolo">%</span></div>
+        <div class="barra"><div class="relleno" id="carga-relleno"></div></div>
+        <div class="ticks" id="carga-ticks" hidden></div>
+        <p class="estado-bruto" id="carga-estado">Empezando…</p>
+        <button class="boton boton-cobre" id="btn-cancelar-carga" type="button">Cancelar carga</button>
+        <p class="nota-pie">La descarga queda en la caché del navegador: las próximas veces
+          este paso será casi instantáneo.</p>
+      </div>
+    </div>
+
+    <!-- Aviso de arranque (fallo de CDN o navegador sin WebGPU) -->
+    <div class="vista-portada" id="vista-aviso" hidden>
+      <div class="portada"></div>
+    </div>
+
+    <!-- Conversación -->
+    <div class="chat" id="chat" aria-live="polite"></div>
+
+    <!-- Barra de búsqueda web -->
+    <div class="barra-busqueda" id="barra-busqueda">
+      <button class="interruptor activa" id="btn-busqueda" type="button" aria-pressed="true"
+        title="Consulta las APIs abiertas de Wikipedia (en español, con respaldo en inglés)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+          stroke-linecap="round" aria-hidden="true">
+          <circle cx="10.5" cy="10.5" r="6.5"></circle>
+          <path d="M15.5 15.5 21 21"></path>
+        </svg>
+        <span id="texto-busqueda">Búsqueda web: activada</span>
+      </button>
+    </div>
+
+    <!-- Escritor -->
+    <div class="escritor" id="escritor">
+      <textarea id="entrada" rows="1" placeholder="Carga un modelo para empezar"
+        aria-label="Mensaje para el modelo" disabled></textarea>
+      <button class="boton boton-primario" id="btn-enviar" type="button" disabled>Enviar</button>
+      <button class="boton boton-cobre" id="btn-parar" type="button">Parar</button>
+    </div>
+  </section>
+
+  <!-- ======== Panel de instrumentos ======== -->
+  <aside class="panel" id="panel" aria-label="Controles del modelo">
+    <h3>Modelo</h3>
+    <select id="select-modelo-panel" aria-label="Modelo"></select>
+    <p class="ayuda-modelo" id="ayuda-modelo-panel">Gemma 2 2B Instruct, cuantizada a 4 bits (q4f16).</p>
+    <button class="boton boton-primario" id="btn-cargar-panel" type="button">Cargar modelo</button>
+
+    <h3>Parámetros de muestreo</h3>
+    <div class="parametro">
+      <div class="etiqueta"><label for="p-temperatura">Temperatura</label><span class="valor" id="v-temperatura">0.7</span></div>
+      <input type="range" id="p-temperatura" min="0" max="1.5" step="0.05" value="0.7">
+    </div>
+    <div class="parametro">
+      <div class="etiqueta"><label for="p-topp">Top-p</label><span class="valor" id="v-topp">0.95</span></div>
+      <input type="range" id="p-topp" min="0.05" max="1" step="0.05" value="0.95">
+    </div>
+    <div class="parametro">
+      <div class="etiqueta"><label for="p-maxtokens">Máximo de tokens de respuesta</label><span class="valor" id="v-maxtokens">512</span></div>
+      <input type="range" id="p-maxtokens" min="64" max="2048" step="32" value="512">
+    </div>
+
+    <h3>Prompt de sistema</h3>
+    <textarea id="prompt-sistema" spellcheck="false">Eres un asistente que funciona por completo en el navegador del usuario, sin servidores. Responde en español, con claridad y de forma concisa.</textarea>
+    <p class="ayuda-modelo">Se aplica al enviar el siguiente mensaje.</p>
+
+    <h3>Conversación</h3>
+    <button class="boton boton-secundario" id="btn-nueva" type="button">Nueva conversación</button>
+
+    <h3>Medidor</h3>
+    <div class="medidor">
+      <dl>
+        <dt>Búsqueda web</dt><dd id="m-busqueda">—</dd>
+        <dt>Primer token</dt><dd id="m-ttft">—</dd>
+        <dt>Prefill</dt><dd id="m-prefill">—</dd>
+        <dt>Decodificación</dt><dd id="m-decode">—</dd>
+        <dt>Tokens de la última respuesta</dt><dd id="m-tokens">—</dd>
+      </dl>
+    </div>
+    <p class="linea-gpu" id="linea-gpu">GPU: comprobando…</p>
+
+    <p class="enlaces">
+      Hecho con <a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noreferrer">web-llm</a> (MLC AI).
+      La búsqueda web consulta las APIs abiertas de Wikipedia (en español, con respaldo en inglés).
+      Esta página es un único archivo HTML.
+    </p>
+  </aside>
+</main>
+
+<script type="module">
+/* ============================================================
+   Lógica del demo — todo el trabajo pesado lo hace web-llm.
+   El script importa el paquete desde el CDN oficial y a partir
+   de ahí la GPU del usuario ejecuta el modelo de forma local.
+   ============================================================ */
+
+// Modelos seleccionados a mano de la lista precompilada de web-llm
+// (webllm.prebuiltAppConfig.model_list tiene ~100 más).
+const MODELOS = [
+  {
+    id: "gemma-2-2b-it-q4f16_1-MLC",
+    nombre: "Gemma 2 2B · q4f16 · recomendado",
+    vramGB: "1,9",
+    desc: "Gemma 2 2B Instruct, cuantizada a 4 bits (q4f16). El equilibrio recomendado entre calidad y tamaño.",
+    grupo: "Gemma"
+  },
+  {
+    id: "gemma-2-2b-it-q4f16_1-MLC-1k",
+    nombre: "Gemma 2 2B · q4f16 · contexto corto (1k)",
+    vramGB: "1,6",
+    desc: "La misma Gemma 2B con contexto de 1024 tokens: aún más ligera para equipos justos.",
+    grupo: "Gemma"
+  },
+  {
+    id: "gemma-2-2b-it-q4f32_1-MLC",
+    nombre: "Gemma 2 2B · q4f32",
+    vramGB: "2,5",
+    desc: "Cuantización f32 para GPUs sin soporte de float16.",
+    grupo: "Gemma"
+  },
+  {
+    id: "gemma-4-E2B-it-q4f16_1-MLC",
+    nombre: "Gemma E2B (gemma-4) · q4f16",
+    vramGB: "3,4",
+    desc: "La variante E2B más reciente de la familia Gemma.",
+    grupo: "Gemma"
+  },
+  {
+    id: "SmolLM2-360M-Instruct-q4f16_1-MLC",
+    nombre: "SmolLM2 360M · q4f16 · mínimo",
+    vramGB: "0,4",
+    desc: "Minúscula: ideal para comprobar en segundos que todo funciona.",
+    grupo: "Otros modelos pequeños"
+  },
+  {
+    id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+    nombre: "Qwen 2.5 0.5B · q4f16",
+    vramGB: "0,9",
+    desc: "Muy pequeña y rápida, buena para comparar velocidades.",
+    grupo: "Otros modelos pequeños"
+  },
+  {
+    id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+    nombre: "Llama 3.2 1B · q4f16",
+    vramGB: "0,9",
+    desc: "Un paso más de tamaño, todavía muy ligera.",
+    grupo: "Otros modelos pequeños"
+  },
+  {
+    id: "Qwen3-1.7B-q4f16_1-MLC",
+    nombre: "Qwen3 1.7B · q4f16",
+    vramGB: "2,0",
+    desc: "Tamaño comparable a Gemma 2B para comparar resultados.",
+    grupo: "Otros modelos pequeños"
+  }
+];
+const MODELO_POR_DEFECTO = "gemma-2-2b-it-q4f16_1-MLC";
+const SUGERENCIAS = [
+  "Hazme un resumen de la historia de Venezuela.",
+  "¿Qué es WebGPU y por qué permite ejecutar IA en el navegador?",
+  "¿Quién fue Ada Lovelace y por qué se la considera la primera programadora?"
+];
+
+// ---------- Referencias al DOM ----------
+const $ = (id) => document.getElementById(id);
+const ui = {
+  chip: $("chip-estado"),
+  vistaPortada: $("vista-portada"),
+  vistaCarga: $("vista-carga"),
+  vistaAviso: $("vista-aviso"),
+  chat: $("chat"),
+  escritor: $("escritor"),
+  entrada: $("entrada"),
+  btnEnviar: $("btn-enviar"),
+  btnParar: $("btn-parar"),
+  btnCargar: $("btn-cargar"),
+  btnCargarPanel: $("btn-cargar-panel"),
+  btnCancelar: $("btn-cancelar-carga"),
+  btnNueva: $("btn-nueva"),
+  btnControlesMovil: $("btn-controles-movil"),
+  panel: $("panel"),
+  select: $("select-modelo"),
+  selectPanel: $("select-modelo-panel"),
+  ayudaModelo: $("ayuda-modelo-panel"),
+  notaModelo: $("nota-modelo"),
+  pct: $("carga-pct"),
+  relleno: $("carga-relleno"),
+  ticks: $("carga-ticks"),
+  estadoBruto: $("carga-estado"),
+  temp: $("p-temperatura"), vTemp: $("v-temperatura"),
+  topp: $("p-topp"), vTopp: $("v-topp"),
+  maxTok: $("p-maxtokens"), vMaxTok: $("v-maxtokens"),
+  promptSistema: $("prompt-sistema"),
+  ttft: $("m-ttft"), prefill: $("m-prefill"), decode: $("m-decode"), tokens: $("m-tokens"),
+  gpu: $("linea-gpu"),
+  barraBusqueda: $("barra-busqueda"),
+  btnBusqueda: $("btn-busqueda"),
+  textoBusqueda: $("texto-busqueda"),
+  mBusqueda: $("m-busqueda")
+};
+
+// ---------- Estado de la aplicación ----------
+let webllm = null;      // módulo de web-llm
+let engine = null;      // instancia de MLCEngine
+let estado = "arrancando"; // arrancando | sin-webgpu | portada | cargando | lista | generando | error
+let modeloCargado = null;
+let historial = [];     // mensajes que se envían al motor (incluye el prompt de sistema)
+let generando = false;
+let interrumpido = false;
+let tokenCarga = 0;     // para invalidar cargas canceladas o desfasadas
+
+// ---------- Utilidades de estado ----------
+function pintarChip(texto, estadoChip) {
+  ui.chip.textContent = texto;
+  ui.chip.dataset.estado = estadoChip || estado;
+}
+function alCambioDeEstado() {
+  ui.vistaPortada.hidden = estado !== "portada";
+  ui.vistaCarga.hidden = estado !== "cargando";
+  ui.chat.style.display = (estado === "lista" || estado === "generando") ? "" : "none";
+  const visibilidadEscritor = (estado === "lista" || estado === "generando") ? "visible" : "hidden";
+  ui.escritor.style.visibility = visibilidadEscritor;
+  ui.barraBusqueda.style.visibility = visibilidadEscritor;
+  const cargable = estado === "portada" || estado === "lista" || estado === "error";
+  ui.btnCargar.disabled = !cargable;
+  ui.btnCargarPanel.disabled = !cargable;
+  ui.entrada.disabled = estado !== "lista" && estado !== "generando";
+  ui.btnEnviar.disabled = estado !== "lista";
+  ui.escritor.classList.toggle("generando", estado === "generando");
+  ui.entrada.placeholder = modeloCargado
+    ? "Escribe a " + MODELOS.find(m => m.id === modeloCargado)?.nombre.split(" ·")[0] + "…"
+    : "Carga un modelo para empezar";
+}
+
+// ---------- Selector de modelos ----------
+function construirSelector(select) {
+  select.innerHTML = "";
+  let grupoActual = null;
+  for (const m of MODELOS) {
+    if (m.grupo !== grupoActual) {
+      grupoActual = m.grupo;
+      const g = document.createElement("optgroup");
+      g.label = grupoActual;
+      select.appendChild(g);
+    }
+    const op = document.createElement("option");
+    op.value = m.id;
+    op.textContent = `${m.nombre} — ≈${m.vramGB} GB VRAM`;
+    select.appendChild(op);
+  }
+}
+function modeloSeleccionado() {
+  return ui.select.value || MODELO_POR_DEFECTO;
+}
+function alSeleccionarModelo() {
+  ui.selectPanel.value = ui.select.value;
+  const m = MODELOS.find(x => x.id === ui.select.value);
+  ui.ayudaModelo.textContent = m ? m.desc : "";
+  const yaCargado = m && m.id === modeloCargado;
+  const etiqueta = estado === "lista" || yaCargado ? "Cambiar a este modelo" : "Cargar modelo";
+  ui.btnCargar.textContent = etiqueta;
+  ui.btnCargarPanel.textContent = etiqueta;
+  guardarPrefs();
+}
+function sincronizarSelectores(origen) {
+  if (origen === ui.select) ui.selectPanel.value = ui.select.value;
+  if (origen === ui.selectPanel) ui.select.value = ui.selectPanel.value;
+  alSeleccionarModelo();
+}
+
+// ---------- Preferencias persistentes (si localStorage está disponible) ----------
+const CLAVE_PREFS = "webllm-gemma-demo";
+function guardarPrefs() {
+  try {
+    localStorage.setItem(CLAVE_PREFS, JSON.stringify({
+      modelo: ui.select.value,
+      temp: ui.temp.value,
+      topp: ui.topp.value,
+      maxTok: ui.maxTok.value,
+      prompt: ui.promptSistema.value,
+      busqueda: BUSQUEDA.activada
+    }));
+  } catch (e) { /* sin localStorage se siguen usando los valores por defecto */ }
+}
+function restaurarPrefs() {
+  try {
+    const p = JSON.parse(localStorage.getItem(CLAVE_PREFS) || "null");
+    if (!p) return;
+    if (p.modelo && MODELOS.some(m => m.id === p.modelo)) ui.select.value = p.modelo;
+    if (p.temp != null) ui.temp.value = p.temp;
+    if (p.topp != null) ui.topp.value = p.topp;
+    if (p.maxTok != null) ui.maxTok.value = p.maxTok;
+    if (typeof p.prompt === "string" && p.prompt.length) ui.promptSistema.value = p.prompt;
+    if (typeof p.busqueda === "boolean") BUSQUEDA.activada = p.busqueda;
+  } catch (e) { /* ignorar y usar valores por defecto */ }
+}
+
+// ---------- Render de la conversación ----------
+function pintarMensajeVacio() {
+  ui.chat.innerHTML = "";
+  const vacio = document.createElement("div");
+  vacio.className = "chat-vacio";
+  vacio.textContent = "El modelo está listo. Pregúntale lo que quieras.";
+  ui.chat.appendChild(vacio);
+  const sug = document.createElement("div");
+  sug.className = "sugerencias";
+  for (const s of SUGERENCIAS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = s;
+    b.addEventListener("click", () => { ui.entrada.value = s; enviar(); });
+    sug.appendChild(b);
+  }
+  ui.chat.appendChild(sug);
+}
+function anadirMensaje(rol, texto) {
+  const chatVacio = ui.chat.querySelector(".chat-vacio");
+  if (chatVacio) chatVacio.remove();
+  const sug = ui.chat.querySelector(".sugerencias");
+  if (sug) sug.remove();
+  const div = document.createElement("div");
+  div.className = "mensaje " + (rol === "user" ? "usuario" : "ia");
+  if (rol === "assistant") {
+    const quien = document.createElement("div");
+    quien.className = "quien";
+    quien.textContent = MODELOS.find(m => m.id === modeloCargado)?.nombre.split(" ·")[0] || "Modelo";
+    div.appendChild(quien);
+    const cuerpo = document.createElement("div");
+    cuerpo.className = "texto";
+    div.appendChild(cuerpo);
+  } else {
+    div.textContent = texto;
+  }
+  ui.chat.appendChild(div);
+  ui.chat.scrollTop = ui.chat.scrollHeight;
+  return div;
+}
+function actualizarMensaje(nodo, texto) {
+  nodo.querySelector(".texto").textContent = texto;
+  ui.chat.scrollTop = ui.chat.scrollHeight;
+}
+function alTerminarMensaje(nodo, detenido, textoPie) {
+  nodo.classList.remove("escribiendo");
+  if (detenido) {
+    const pie = document.createElement("div");
+    pie.className = "pie-ia detenido";
+    pie.textContent = "Respuesta detenida.";
+    nodo.appendChild(pie);
+  } else if (textoPie) {
+    const pie = document.createElement("div");
+    pie.className = "pie-ia";
+    pie.textContent = textoPie;
+    nodo.appendChild(pie);
+  }
+}
+function avisoEnChat(titulo, detalle) {
+  const caja = document.createElement("div");
+  caja.className = "aviso";
+  caja.innerHTML = `<p>${titulo}</p>` + (detalle ? `<p>${detalle}</p>` : "");
+  ui.chat.prepend(caja);
+}
+
+// ---------- Prompt de sistema ----------
+function sincronizarPromptSistema() {
+  const sp = ui.promptSistema.value.trim();
+  if (historial.length && historial[0].role === "system") {
+    if (sp) historial[0].content = sp;
+    else historial.shift();
+  } else if (sp) {
+    historial.unshift({ role: "system", content: sp });
+  }
+  guardarPrefs();
+}
+
+// ---------- Progreso de carga (el "banco de carga") ----------
+function alProgreso(rep) {
+  const pct = Math.round((rep.progress || 0) * 100);
+  ui.pct.textContent = pct;
+  ui.relleno.style.width = pct + "%";
+  ui.estadoBruto.textContent = rep.text || "";
+  // web-llm informa del fragmento en curso: "Fetching param cache[12/34]…"
+  const m = /cache\[(\d+)\/(\d+)\]/.exec(rep.text || "");
+  if (m) {
+    const [hechos, total] = [parseInt(m[1], 10), parseInt(m[2], 10)];
+    if (ui.ticks.childElementCount !== total) {
+      ui.ticks.innerHTML = "";
+      for (let i = 0; i < total; i++) ui.ticks.appendChild(document.createElement("span"));
+    }
+    ui.ticks.hidden = false;
+    [...ui.ticks.children].forEach((t, i) => t.classList.toggle("lleno", i < hechos));
+  } else {
+    ui.ticks.hidden = true;
+  }
+}
+
+// ---------- Carga del modelo ----------
+async function cargarModelo() {
+  if (!engine || estado === "cargando") return;
+  if (generando) { interrumpido = true; try { await engine.interruptGenerate(); } catch (e) {} }
+  const id = modeloSeleccionado();
+  const miToken = ++tokenCarga;
+  estado = "cargando"; modeloCargado = null;
+  alCambioDeEstado();
+  ui.pct.textContent = "0"; ui.relleno.style.width = "0%"; ui.ticks.hidden = true;
+  ui.estadoBruto.textContent = "Contactando con la caché y la GPU…";
+  pintarChip("Descargando modelo", "cargando");
+  try {
+    // Los parámetros actuales también sirven de configuración base del chat.
+    await engine.reload(id, { temperature: parseFloat(ui.temp.value), top_p: parseFloat(ui.topp.value) });
+    if (miToken !== tokenCarga) { // la carga fue cancelada mientras esperábamos
+      try { await engine.unload(); } catch (e) {}
+      return;
+    }
+    modeloCargado = id;
+    historial = [];
+    sincronizarPromptSistema();
+    pintarMensajeVacio();
+    const m = MODELOS.find(x => x.id === id);
+    pintarChip((m?.nombre.split(" ·")[0] || id) + " lista", "lista");
+    estado = "lista";
+    alCambioDeEstado();
+    alSeleccionarModelo();
+  } catch (e) {
+    if (miToken !== tokenCarga) return; // otra carga ya está en marcha
+    estado = "portada";
+    pintarChip("Error al cargar", "error");
+    pintarErrorCarga(e);
+    alCambioDeEstado();
+  }
+}
+function cancelarCarga() {
+  if (estado !== "cargando") return;
+  tokenCarga++;
+  try { engine.interruptGenerate(); } catch (e) {}
+  estado = "portada";
+  pintarChip("Sin modelo cargado", "portada");
+  alCambioDeEstado();
+  alSeleccionarModelo();
+}
+function pintarErrorCarga(e) {
+  const msg = String(e?.message || e || "");
+  let pista = "Revisa la consola del navegador (F12) para ver el detalle.";
+  if (/out of memory|OOM/i.test(msg)) {
+    pista = "A tu GPU no le caben los pesos. Prueba una variante más ligera del selector " +
+      "(la de contexto 1k) o un modelo pequeño como SmolLM2 360M para empezar.";
+  } else if (/f16|shader-f16|float16/i.test(msg)) {
+    pista = "Tu GPU no soporta float16: usa la variante q4f32 de Gemma 2B del selector.";
+  }
+  const aviso = document.createElement("div");
+  aviso.className = "aviso";
+  aviso.innerHTML = `<p>No se pudo cargar el modelo.</p><p>${pista}</p>`;
+  const portada = ui.vistaPortada.querySelector(".portada");
+  portada.prepend(aviso);
+  // El aviso vive hasta que se intente otra carga.
+  ui.btnCargar.addEventListener("click", () => aviso.remove(), { once: true });
+}
+
+// ---------- Búsqueda web ----------
+// El demo consulta las APIs abiertas de Wikipedia (CORS permitido, sin claves):
+// primero en español y, si no hay resultados, reintenta en inglés. Devuelve
+// resultados normalizados { titulo, extracto, url } para que añadir otra
+// fuente (cualquier buscador con CORS abierto) sea solo reescribir esta función.
+const BUSQUEDA = { activada: true };
+
+async function buscarEnWikipedia(consulta) {
+  const q = consulta.replace(/[¿?¡!.]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!q) return [];
+  for (const idioma of ["es", "en"]) {
+    try {
+      const buscar = `https://${idioma}.wikipedia.org/w/api.php?action=query&list=search` +
+        `&srsearch=${encodeURIComponent(q)}&srlimit=4&srprop=snippet&format=json&origin=*`;
+      const r = await fetch(buscar, { signal: AbortSignal.timeout(9000) });
+      const datos = await r.json();
+      const hallazgos = datos?.query?.search || [];
+      if (!hallazgos.length) continue;
+      // Segunda llamada: intro de cada artículo en texto plano, todas a la vez.
+      const titulos = hallazgos.map(h => h.title).join("|");
+      const extractos = `https://${idioma}.wikipedia.org/w/api.php?action=query&prop=extracts|info` +
+        `&exintro=1&explaintext=1&exlimit=5&inprop=url&redirects=1` +
+        `&titles=${encodeURIComponent(titulos)}&format=json&origin=*`;
+      const r2 = await fetch(extractos, { signal: AbortSignal.timeout(9000) });
+      const d2 = await r2.json();
+      const porTitulo = new Map(Object.values(d2?.query?.pages || {}).map(p => [p.title, p]));
+      const resultados = [];
+      for (const h of hallazgos) {
+        const p = porTitulo.get(h.title);
+        const bruto = (p?.extract || h.snippet || "").replace(/\s+/g, " ").trim();
+        if (!bruto) continue;
+        resultados.push({
+          titulo: h.title,
+          extracto: bruto.slice(0, 1100),
+          url: p?.fullurl || `https://${idioma}.wikipedia.org/wiki/${encodeURIComponent(h.title.replace(/ /g, "_"))}`,
+          idioma
+        });
+      }
+      if (resultados.length) return resultados;
+    } catch (e) { /* sin red o API caída: probar el otro idioma o seguir sin contexto */ }
+  }
+  return [];
+}
+
+function construirContextoBusqueda(resultados) {
+  return resultados.map((r, i) => `[${i + 1}] ${r.titulo}: ${r.extracto}`).join("\n\n");
+}
+
+function añadirFuentes(nodo, resultados) {
+  const div = document.createElement("div");
+  div.className = "fuentes";
+  const titulo = document.createElement("div");
+  titulo.className = "titulo-fuentes";
+  titulo.textContent = "Fuentes consultadas en Wikipedia";
+  const lista = document.createElement("ol");
+  for (const r of resultados) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = r.url;
+    a.textContent = r.titulo;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    li.appendChild(a);
+    lista.appendChild(li);
+  }
+  div.appendChild(titulo);
+  div.appendChild(lista);
+  nodo.appendChild(div);
+}
+
+function pintarBusqueda() {
+  ui.textoBusqueda.textContent = "Búsqueda web: " + (BUSQUEDA.activada ? "activada" : "desactivada");
+  ui.btnBusqueda.classList.toggle("activa", BUSQUEDA.activada);
+  ui.btnBusqueda.setAttribute("aria-pressed", String(BUSQUEDA.activada));
+}
+
+// ---------- Envío de mensaje y streaming ----------
+async function enviar() {
+  const texto = ui.entrada.value.trim();
+  if (!texto || !modeloCargado || estado !== "lista") return;
+  sincronizarPromptSistema();
+  historial.push({ role: "user", content: texto });
+  anadirMensaje("user", texto);
+  ui.entrada.value = "";
+  ajustarAlturaEntrada();
+
+  const burbuja = anadirMensaje("assistant", "");
+  burbuja.classList.add("escribiendo");
+
+  estado = "generando"; generando = true; interrumpido = false;
+  alCambioDeEstado();
+
+  // Si la búsqueda web está activada, consultamos Wikipedia antes de generar.
+  let resultados = [];
+  let seBusco = false;
+  if (BUSQUEDA.activada) {
+    seBusco = true;
+    pintarChip("Buscando en la web…", "generando");
+    const avisoBusqueda = document.createElement("div");
+    avisoBusqueda.className = "buscando-estado";
+    avisoBusqueda.textContent = "Buscando en Wikipedia (es, luego en)…";
+    burbuja.appendChild(avisoBusqueda);
+    const tBusqueda = performance.now();
+    resultados = await buscarEnWikipedia(texto);
+    avisoBusqueda.remove();
+    ui.mBusqueda.textContent = ((performance.now() - tBusqueda) / 1000)
+      .toLocaleString("es-ES", { maximumFractionDigits: 2 }) + " s";
+    if (interrumpido) {
+      // El usuario detuvo la búsqueda antes de generar.
+      if (resultados.length) añadirFuentes(burbuja, resultados);
+      historial.push({ role: "assistant", content: "" });
+      alTerminarMensaje(burbuja, true, null);
+      generando = false;
+      estado = "lista";
+      alCambioDeEstado();
+      pintarChip((MODELOS.find(m => m.id === modeloCargado)?.nombre.split(" ·")[0] || "Modelo") + " lista", "lista");
+      return;
+    }
+  } else {
+    ui.mBusqueda.textContent = "—";
+  }
+  pintarChip("Generando…", "generando");
+
+  const t0 = performance.now();
+  let ttft = null, uso = null, acumulado = "";
+  try {
+    // Se envía una copia del historial: el último mensaje del usuario de esa
+    // copia puede llevar el contexto de búsqueda sin ensuciar la conversación.
+    const mensajes = historial.map(m => ({ ...m }));
+    if (resultados.length) {
+      mensajes[mensajes.length - 1].content =
+        `Pregunta: ${texto}\n\n` +
+        `Resultados de búsqueda (Wikipedia):\n${construirContextoBusqueda(resultados)}\n\n` +
+        `Instrucción: responde en español a la Pregunta apoyándote en los Resultados de búsqueda ` +
+        `y citándolos entre corchetes como [1], [2]… Si no te sirven, dilo y responde con lo que sepas.`;
+    }
+    const params = {
+      messages: mensajes,
+      temperature: parseFloat(ui.temp.value),
+      top_p: parseFloat(ui.topp.value),
+      max_tokens: parseInt(ui.maxTok.value, 10),
+      stream: true,
+      stream_options: { include_usage: true }
+    };
+    const trozos = await engine.chat.completions.create(params);
+    for await (const trozo of trozos) {
+      const delta = trozo.choices?.[0]?.delta?.content;
+      if (delta) {
+        if (ttft === null) ttft = (performance.now() - t0) / 1000;
+        acumulado += delta;
+        actualizarMensaje(burbuja, acumulado);
+      }
+      if (trozo.usage) uso = trozo.usage;
+    }
+  } catch (e) {
+    if (!interrumpido) {
+      const msg = String(e?.message || e || "");
+      if (/context|too long/i.test(msg)) {
+        avisoEnChat("La conversación superó el contexto del modelo.",
+          "Empieza una nueva conversación desde el panel para liberar memoria.");
+      } else {
+        avisoEnChat("El modelo no pudo responder.", "Revisa la consola (F12) para ver el detalle.");
+      }
+      console.error(e);
+    }
+  }
+  if (acumulado || !interrumpido) {
+    historial.push({ role: "assistant", content: acumulado });
+  }
+  const partesPie = [];
+  if (uso) partesPie.push(`${uso.completion_tokens} tokens generados`);
+  if (seBusco && !resultados.length) partesPie.push("sin resultados en Wikipedia");
+  alTerminarMensaje(burbuja, interrumpido, partesPie.join(" · ") || null);
+  if (resultados.length) añadirFuentes(burbuja, resultados);
+  pintarMedidor(uso, ttft);
+  generando = false;
+  estado = "lista";
+  alCambioDeEstado();
+  pintarChip((MODELOS.find(m => m.id === modeloCargado)?.nombre.split(" ·")[0] || "Modelo") + " lista", "lista");
+  guardarPrefs();
+  ui.entrada.focus();
+}
+function parar() {
+  if (!generando) return;
+  interrumpido = true;
+  try { engine.interruptGenerate(); } catch (e) {}
+}
+
+// ---------- Medidor ----------
+function pintarMedidor(uso, ttft) {
+  const fmt = (n, dec = 1) => (n == null ? "—" : n.toLocaleString("es-ES", { maximumFractionDigits: dec }));
+  ui.ttft.textContent = ttft == null ? "—" : fmt(ttft, 2) + " s";
+  if (uso?.extra) {
+    ui.prefill.textContent = fmt(uso.extra.prefill_tokens_per_s, 0) + " tok/s";
+    ui.decode.textContent = fmt(uso.extra.decode_tokens_per_s, 0) + " tok/s";
+  }
+  ui.tokens.textContent = uso ? `${uso.prompt_tokens} → ${uso.completion_tokens}` : "—";
+}
+
+// ---------- Nueva conversación ----------
+function nuevaConversacion() {
+  if (generando) parar();
+  historial = [];
+  sincronizarPromptSistema();
+  pintarMensajeVacio();
+  if (modeloCargado) {
+    const nombre = MODELOS.find(m => m.id === modeloCargado)?.nombre.split(" ·")[0] || "Modelo";
+    pintarChip(nombre + " lista", "lista");
+  }
+}
+
+// ---------- Escritor ----------
+function ajustarAlturaEntrada() {
+  ui.entrada.style.height = "auto";
+  ui.entrada.style.height = Math.min(ui.entrada.scrollHeight, 140) + "px";
+}
+
+// ---------- Arranque ----------
+async function detectarGPU() {
+  try {
+    if (!("gpu" in navigator)) { ui.gpu.textContent = "GPU: sin WebGPU"; return; }
+    const ad = await navigator.gpu.requestAdapter();
+    if (!ad) { ui.gpu.textContent = "GPU: sin adaptador disponible"; return; }
+    let info = null;
+    if (ad.info) info = ad.info;
+    else if (typeof ad.requestAdapterInfo === "function") info = await ad.requestAdapterInfo();
+    const partes = [info?.vendor, info?.architecture].filter(Boolean);
+    ui.gpu.innerHTML = "GPU: <strong>" + (partes.join(" ").trim() || "detectada") + "</strong>";
+  } catch (e) {
+    ui.gpu.textContent = "GPU: no identificada";
+  }
+}
+async function arrancar() {
+  try {
+    webllm = await import("https://esm.run/@mlc-ai/web-llm");
+  } catch (e) {
+    estado = "error";
+    pintarChip("Sin web-llm", "error");
+    mostrarAviso("No se pudo descargar web-llm desde el CDN.",
+      "Comprueba tu conexión y recarga la página. El resto del demo necesita ese módulo.");
+    console.error(e);
+    return;
+  }
+  if (!("gpu" in navigator)) {
+    estado = "sin-webgpu";
+    pintarChip("WebGPU no disponible", "sin-webgpu");
+    mostrarAviso("Este navegador no tiene WebGPU activado.",
+      "Hace falta Chrome o Edge (o un Safari muy reciente) con la aceleración por GPU activada. " +
+      "Actualiza el navegador y vuelve a abrir esta página.");
+    return;
+  }
+  engine = new webllm.MLCEngine();
+  engine.setInitProgressCallback(alProgreso);
+  // Si la Cache API no está disponible (ocurre al abrir el archivo como file:// en
+  // algunos navegadores), web-llm guarda los pesos en IndexedDB.
+  try {
+    await caches.open("prueba-webllm-demo");
+  } catch (e) {
+    try {
+      engine.setAppConfig({ ...webllm.prebuiltAppConfig, cacheBackend: "indexeddb" });
+      ui.notaModelo.textContent = "Esta vez los pesos se guardarán en IndexedDB " +
+        "(la Cache API no está disponible). La primera carga tarda un rato; después arranca en segundos.";
+    } catch (e2) { /* seguimos con el comportamiento por defecto */ }
+  }
+  await detectarGPU();
+  estado = "portada";
+  pintarChip("Sin modelo cargado", "portada");
+  alCambioDeEstado();
+}
+
+function mostrarAviso(titulo, detalle) {
+  ui.vistaPortada.hidden = true;
+  ui.vistaAviso.hidden = false;
+  ui.vistaAviso.innerHTML = "";
+  const caja = document.createElement("div");
+  caja.className = "portada";
+  caja.innerHTML = `<h2>${titulo}</h2><p class="promesa">${detalle}</p>`;
+  ui.vistaAviso.appendChild(caja);
+  ui.escritor.style.visibility = "hidden";
+}
+
+// ---------- Conexión de eventos ----------
+construirSelector(ui.select);
+construirSelector(ui.selectPanel);
+ui.select.value = MODELO_POR_DEFECTO;
+restaurarPrefs();
+ui.selectPanel.value = ui.select.value;
+alSeleccionarModelo();
+pintarBusqueda();
+
+ui.select.addEventListener("change", () => sincronizarSelectores(ui.select));
+ui.selectPanel.addEventListener("change", () => sincronizarSelectores(ui.selectPanel));
+ui.btnCargar.addEventListener("click", cargarModelo);
+ui.btnCargarPanel.addEventListener("click", cargarModelo);
+ui.btnCancelar.addEventListener("click", cancelarCarga);
+ui.btnEnviar.addEventListener("click", enviar);
+ui.btnParar.addEventListener("click", parar);
+ui.btnNueva.addEventListener("click", nuevaConversacion);
+ui.btnBusqueda.addEventListener("click", () => {
+  BUSQUEDA.activada = !BUSQUEDA.activada;
+  pintarBusqueda();
+  guardarPrefs();
+});
+ui.entrada.addEventListener("input", ajustarAlturaEntrada);
+ui.entrada.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
+});
+ui.temp.addEventListener("input", () => { ui.vTemp.textContent = parseFloat(ui.temp.value).toFixed(2); guardarPrefs(); });
+ui.topp.addEventListener("input", () => { ui.vTopp.textContent = parseFloat(ui.topp.value).toFixed(2); guardarPrefs(); });
+ui.maxTok.addEventListener("input", () => { ui.vMaxTok.textContent = ui.maxTok.value; guardarPrefs(); });
+ui.btnControlesMovil.addEventListener("click", () => {
+  const abrir = ui.panel.classList.toggle("abierto");
+  if (abrir) ui.panel.scrollIntoView({ behavior: "smooth" });
+});
+
+// ---------- Objeto de depuración (útil desde la consola y para pruebas) ----------
+window.DemoWebLLM = {
+  get estado() { return estado; },
+  get modeloCargado() { return modeloCargado; },
+  get historial() { return historial; },
+  engine: () => engine,
+  webllm: () => webllm,
+  buscar: buscarEnWikipedia,
+  // Funciones de simulación, solo para pruebas visuales sin descargar un modelo:
+  _simular: {
+    cargando(pct = 42, texto = "Fetching param cache[12/34]: 580MB loaded") {
+      estado = "cargando"; alCambioDeEstado();
+      pintarChip("Descargando modelo", "cargando");
+      alProgreso({ progress: pct / 100, text: texto });
+    },
+    listo() {
+      modeloCargado = ui.select.value;
+      estado = "lista";
+      pintarMensajeVacio();
+      pintarChip("Gemma 2 2B lista", "lista");
+      alCambioDeEstado();
+    },
+    respuesta(texto = "Hola, soy Gemma 2B y estoy corriendo por completo en tu GPU, sin salir de tu navegador. Pregúntame lo que quieras.",
+        uso = { prompt_tokens: 21, completion_tokens: 18, extra: { prefill_tokens_per_s: 412.3, decode_tokens_per_s: 27.6 } },
+        ttft = 0.83) {
+      const u = anadirMensaje("user", "Preséntate");
+      const b = anadirMensaje("assistant", "");
+      b.classList.add("escribiendo");
+      actualizarMensaje(b, texto);
+      alTerminarMensaje(b, false, `${uso.completion_tokens} tokens generados`);
+      añadirFuentes(b, [
+        { titulo: "Fotosíntesis", url: "https://es.wikipedia.org/wiki/Fotos%C3%ADntesis" },
+        { titulo: "Cloroplasto", url: "https://es.wikipedia.org/wiki/Cloroplasto" }
+      ]);
+      ui.mBusqueda.textContent = "0,42 s";
+      pintarMedidor(uso, ttft);
+    }
+  }
+};
+
+arrancar();
+</script>
+</body>
+</html>
