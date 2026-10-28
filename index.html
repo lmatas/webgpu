@@ -31,6 +31,10 @@
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
+/* El atributo hidden debe ganar siempre a cualquier display de las clases
+   (sin esto, .vista-portada y .vista-carga seguían renderizándose aunque
+   estuvieran ocultas, aplastando el chat contra el borde inferior). */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -41,18 +45,33 @@ body {
   line-height: 1.5;
   display: grid;
   grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
   height: 100dvh;
 }
 
 /* ---------- Cabecera ---------- */
 .cabecera {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  row-gap: 8px;
   padding: 14px 22px;
   border-bottom: 1px solid var(--linea);
   background: var(--papel);
+}
+.cabecera-titulo { min-width: 0; }
+.cabecera-busqueda {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.fuente-indicador {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  white-space: nowrap;
 }
 .cabecera h1 {
   font-family: var(--serif);
@@ -66,7 +85,7 @@ body {
   font-size: 12.5px;
   margin: 0;
 }
-#btn-controles-movil { display: none; }
+#btn-controles-movil { padding: 6px 12px; font-size: 13px; }
 
 .chip {
   display: inline-flex;
@@ -93,13 +112,14 @@ body {
 .chip[data-estado="sin-webgpu"]::before,
 .chip[data-estado="error"]::before { background: #B33A2B; }
 
-/* ---------- Reparto en dos columnas ---------- */
+/* ---------- Reparto vertical: conversación arriba, controles abajo ---------- */
 .escenario {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 316px;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
 }
 .columna-chat {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -249,15 +269,15 @@ body {
 }
 .sugerencias button:hover { border-color: var(--verde); }
 
-.mensaje { margin-bottom: 22px; max-width: 720px; }
+.mensaje { margin-bottom: 22px; max-width: 720px; margin-inline: auto; }
 .mensaje .quien {
   font-size: 11.5px;
   color: var(--tinta-suave);
   margin-bottom: 5px;
   letter-spacing: 0;
 }
-.mensaje.usuario {
-  margin-left: auto;
+.mensaje.usuario { display: flex; justify-content: flex-end; }
+.mensaje.usuario .burbuja {
   width: fit-content;
   max-width: min(85%, 560px);
   background: var(--blanco);
@@ -293,6 +313,7 @@ body {
 
 /* ---------- Zona de escritura ---------- */
 .escritor {
+  border-top: 1px solid var(--linea);
   padding: 14px 22px 16px;
   display: flex;
   gap: 10px;
@@ -344,12 +365,19 @@ body {
 .escritor.generando #btn-enviar { display: none; }
 .escritor.generando #btn-parar { display: inline-block; }
 
-/* ---------- Barra de búsqueda web ---------- */
-.barra-busqueda {
-  border-top: 1px solid var(--linea);
-  padding: 11px 22px 0;
-  background: var(--papel);
+/* ---------- Controles de búsqueda web (en la cabecera) ---------- */
+.boton-texto {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--tinta-suave);
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 6px;
 }
+.boton-texto:hover { color: var(--verde); background: var(--blanco); }
+.boton-texto:focus-visible { outline: 2px solid var(--cobre); outline-offset: 2px; }
 .interruptor {
   display: inline-flex;
   align-items: center;
@@ -385,24 +413,71 @@ body {
 .fuentes li { font-size: 12.5px; line-height: 1.45; margin-bottom: 2px; }
 .fuentes a { overflow-wrap: anywhere; }
 
-/* ---------- Panel de instrumentos ---------- */
-.panel {
-  border-left: 1px solid var(--linea);
-  background: var(--papel-2);
-  padding: 18px;
-  overflow-y: auto;
-  min-height: 0;
-}
-.panel h3 {
-  font-size: 13.5px;
-  font-weight: 600;
-  margin: 22px 0 9px;
-  padding-top: 18px;
+/* ---------- Franja inferior de controles ---------- */
+.controles {
+  display: none;
   border-top: 1px solid var(--linea);
+  background: var(--papel-2);
+  padding: 12px 22px 14px;
+  overflow-y: auto;
+  max-height: min(300px, 36vh);
+  min-height: 0;
+  min-width: 0;
 }
-.panel h3:first-of-type { margin-top: 4px; border-top: none; padding-top: 0; }
-.panel select,
-.panel textarea {
+.controles.abierto { display: block; }
+.controles-fila {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1.15fr 0.95fr;
+  gap: 16px 26px;
+}
+.controles h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 7px;
+  color: var(--tinta-suave);
+}
+.fila-modelo { display: flex; gap: 8px; }
+.fila-modelo select { flex: 1; min-width: 0; }
+.ayuda-modelo {
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin: 7px 0 0;
+}
+.parametro {
+  display: grid;
+  grid-template-columns: max-content 1fr max-content;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.parametro:last-child { margin-bottom: 0; }
+.parametro-selector { grid-template-columns: max-content 1fr; }
+.parametro-selector select { width: 100%; }
+.grupo-google { grid-column: 1 / -1; }
+.fila-google { display: flex; gap: 8px; flex-wrap: wrap; }
+.fila-google input {
+  flex: 1;
+  min-width: 180px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--tinta);
+  background: var(--blanco);
+  border: 1px solid var(--linea);
+  border-radius: var(--radio);
+  padding: 8px 10px;
+}
+.fila-google input:focus-visible { outline: 2px solid var(--cobre); outline-offset: 1px; border-color: var(--verde); }
+.fila-google.oculta { display: none; }
+.grupo-google select { margin-bottom: 8px; }
+.parametro label { font-size: 12.5px; }
+.parametro .valor { font-family: var(--mono); font-size: 12px; color: var(--verde); }
+.parametro input[type="range"] {
+  width: 100%;
+  accent-color: var(--verde);
+  margin: 0;
+}
+.controles select,
+.controles textarea {
   width: 100%;
   font: inherit;
   font-size: 13px;
@@ -412,94 +487,71 @@ body {
   border-radius: var(--radio);
   padding: 8px 10px;
 }
-.panel select:focus-visible,
-.panel textarea:focus-visible,
-.panel input:focus-visible { outline: 2px solid var(--cobre); outline-offset: 1px; border-color: var(--verde); }
-.panel textarea { resize: vertical; min-height: 68px; }
-.panel .ayuda-modelo {
-  font-size: 12px;
-  color: var(--tinta-suave);
-  margin: 7px 0 10px;
-}
-.panel .boton { width: 100%; }
-
-.parametro { margin-bottom: 12px; }
-.parametro .etiqueta {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-.parametro .valor { font-family: var(--mono); font-size: 12.5px; color: var(--verde); }
-.parametro input[type="range"] {
-  width: 100%;
-  accent-color: var(--verde);
-  margin: 0;
-}
-
-.medidor {
-  font-size: 13px;
-}
+.controles textarea { resize: vertical; min-height: 58px; }
+.controles select:focus-visible,
+.controles textarea:focus-visible { outline: 2px solid var(--cobre); outline-offset: 1px; border-color: var(--verde); }
 .medidor dl {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 5px 14px;
+  gap: 4px 14px;
   margin: 0;
 }
-.medidor dt { color: var(--tinta-suave); }
+.medidor dt { color: var(--tinta-suave); font-size: 12.5px; }
 .medidor dd {
   margin: 0;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 12px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .linea-gpu {
   font-size: 12px;
   color: var(--tinta-suave);
-  margin: 12px 0 0;
+  margin: 10px 0 0;
 }
 .linea-gpu strong { color: var(--tinta); font-weight: 600; }
-
-.panel .enlaces {
-  font-size: 12px;
+.enlaces {
+  font-size: 11.5px;
   color: var(--tinta-suave);
-  margin: 18px 0 0;
-  padding-top: 14px;
-  border-top: 1px solid var(--linea);
+  margin: 8px 0 0;
 }
-.panel .enlaces a { color: var(--verde); }
+.enlaces a { color: var(--verde); }
 a { color: var(--verde); }
+@media (max-width: 1150px) {
+  .controles-fila { grid-template-columns: 1fr 1fr; }
+}
 
 /* ---------- Móvil ---------- */
 @media (max-width: 880px) {
-  .cabecera { flex-wrap: wrap; row-gap: 8px; }
-  .cabecera > div:first-child { min-width: 0; }
-  .escenario { grid-template-columns: 1fr; }
-  .panel {
-    display: none;
-    border-left: none;
-    border-top: 1px solid var(--linea);
-  }
-  .panel.abierto { display: block; }
-  #btn-controles-movil { display: inline-block; }
-  .columna-chat { min-height: 78dvh; }
+  .controles-fila { grid-template-columns: 1fr; gap: 14px; }
   .chat { padding: 20px 16px 10px; }
-  .barra-busqueda { padding: 10px 16px 0; }
   .escritor { padding: 12px 16px 14px; }
+  .cabecera { padding: 12px 16px; }
 }
 </style>
 </head>
 <body>
 
 <header class="cabecera">
-  <div>
+  <div class="cabecera-titulo">
     <h1>Chat local con Gemma 2B</h1>
     <p class="subtitulo">Todo corre en tu equipo con WebGPU, sin servidores.</p>
   </div>
+  <div class="cabecera-busqueda">
+    <button class="interruptor activa" id="btn-busqueda" type="button" aria-pressed="true"
+      title="Busca según la fuente elegida (LA Referencia o Google) en Controles">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+        stroke-linecap="round" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5"></circle>
+        <path d="M15.5 15.5 21 21"></path>
+      </svg>
+      <span id="texto-busqueda">Búsqueda web: activada</span>
+    </button>
+    <span class="fuente-indicador" id="fuente-indicador">LA Referencia</span>
+    <button class="boton-texto" id="btn-nueva" type="button">Nueva conversación</button>
+  </div>
   <span class="chip" id="chip-estado" data-estado="arrancando" aria-live="polite">Preparando…</span>
-  <button class="boton boton-secundario" id="btn-controles-movil" type="button">Controles</button>
+  <button class="boton boton-secundario" id="btn-controles-movil" type="button" aria-controls="panel" aria-expanded="false">Controles</button>
 </header>
 
 <main class="escenario">
@@ -546,19 +598,6 @@ a { color: var(--verde); }
     <!-- Conversación -->
     <div class="chat" id="chat" aria-live="polite"></div>
 
-    <!-- Barra de búsqueda web -->
-    <div class="barra-busqueda" id="barra-busqueda">
-      <button class="interruptor activa" id="btn-busqueda" type="button" aria-pressed="true"
-        title="Consulta las APIs abiertas de Wikipedia (en español, con respaldo en inglés)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-          stroke-linecap="round" aria-hidden="true">
-          <circle cx="10.5" cy="10.5" r="6.5"></circle>
-          <path d="M15.5 15.5 21 21"></path>
-        </svg>
-        <span id="texto-busqueda">Búsqueda web: activada</span>
-      </button>
-    </div>
-
     <!-- Escritor -->
     <div class="escritor" id="escritor">
       <textarea id="entrada" rows="1" placeholder="Carga un modelo para empezar"
@@ -568,51 +607,82 @@ a { color: var(--verde); }
     </div>
   </section>
 
-  <!-- ======== Panel de instrumentos ======== -->
-  <aside class="panel" id="panel" aria-label="Controles del modelo">
-    <h3>Modelo</h3>
-    <select id="select-modelo-panel" aria-label="Modelo"></select>
-    <p class="ayuda-modelo" id="ayuda-modelo-panel">Gemma 2 2B Instruct, cuantizada a 4 bits (q4f16).</p>
-    <button class="boton boton-primario" id="btn-cargar-panel" type="button">Cargar modelo</button>
+  <!-- ======== Franja inferior de controles ======== -->
+  <aside class="controles" id="panel" aria-label="Controles del modelo">
+    <div class="controles-fila">
+      <section class="grupo">
+        <h3>Modelo</h3>
+        <div class="fila-modelo">
+          <select id="select-modelo-panel" aria-label="Modelo"></select>
+          <button class="boton boton-primario" id="btn-cargar-panel" type="button">Cargar modelo</button>
+        </div>
+        <p class="ayuda-modelo" id="ayuda-modelo-panel">Gemma 2 2B Instruct, cuantizada a 4 bits (q4f16).</p>
+      </section>
 
-    <h3>Parámetros de muestreo</h3>
-    <div class="parametro">
-      <div class="etiqueta"><label for="p-temperatura">Temperatura</label><span class="valor" id="v-temperatura">0.7</span></div>
-      <input type="range" id="p-temperatura" min="0" max="1.5" step="0.05" value="0.7">
+      <section class="grupo">
+        <h3>Parámetros</h3>
+        <div class="parametro">
+          <label for="p-temperatura">Temperatura</label>
+          <input type="range" id="p-temperatura" min="0" max="1.5" step="0.05" value="0.7">
+          <span class="valor" id="v-temperatura">0.7</span>
+        </div>
+        <div class="parametro">
+          <label for="p-topp">Top-p</label>
+          <input type="range" id="p-topp" min="0.05" max="1" step="0.05" value="0.95">
+          <span class="valor" id="v-topp">0.95</span>
+        </div>
+        <div class="parametro">
+          <label for="p-maxtokens">Máx. tokens</label>
+          <input type="range" id="p-maxtokens" min="64" max="2048" step="32" value="512">
+          <span class="valor" id="v-maxtokens">512</span>
+        </div>
+        <div class="parametro parametro-selector">
+          <label for="p-extension">Extensión</label>
+          <select id="p-extension">
+            <option value="breve">Breve, 1 párrafo</option>
+            <option value="normal" selected>Normal, 2-3 párrafos</option>
+            <option value="extensa">Extensa, 4-6 párrafos</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="grupo">
+        <h3>Prompt de sistema</h3>
+        <textarea id="prompt-sistema" spellcheck="false">Eres un asistente que funciona por completo en el navegador del usuario, sin servidores. Responde en español y con claridad.</textarea>
+        <p class="ayuda-modelo">Se aplica al enviar el siguiente mensaje.</p>
+      </section>
+
+      <section class="grupo">
+        <h3>Medidor</h3>
+        <div class="medidor">
+          <dl>
+            <dt>Búsqueda web</dt><dd id="m-busqueda">—</dd>
+            <dt>Primer token</dt><dd id="m-ttft">—</dd>
+            <dt>Prefill</dt><dd id="m-prefill">—</dd>
+            <dt>Decodificación</dt><dd id="m-decode">—</dd>
+            <dt>Tokens última respuesta</dt><dd id="m-tokens">—</dd>
+          </dl>
+        </div>
+        <p class="linea-gpu" id="linea-gpu">GPU: comprobando…</p>
+        <p class="enlaces">Hecho con <a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noreferrer">web-llm</a> (MLC AI).
+          La búsqueda consulta LA Referencia (API abierta) o Google con tu clave, según la fuente elegida.</p>
+      </section>
+
+      <section class="grupo grupo-google">
+        <h3>Fuente de búsqueda web</h3>
+        <select id="p-fuente" aria-label="Fuente de la búsqueda web">
+          <option value="lareferencia" selected>LA Referencia · artículos científicos, sin clave</option>
+          <option value="google">Google · requiere tu clave</option>
+        </select>
+        <div class="fila-google oculta" id="fila-google">
+          <input type="password" id="g-clave" placeholder="Clave de API de Google" autocomplete="off" aria-label="Clave de API de Google">
+          <input type="text" id="g-cx" placeholder="ID del buscador (cx)" autocomplete="off" aria-label="ID del buscador programable de Google">
+        </div>
+        <p class="ayuda-modelo" id="ayuda-fuente">LA Referencia busca en casi 6 millones de artículos y tesis de
+          repositorios académicos de Latinoamérica, directamente desde tu navegador y sin claves.
+          Google se activa eligiéndolo y pegando tu clave (100 consultas gratis al día; pasos en el README).</p>
+      </section>
     </div>
-    <div class="parametro">
-      <div class="etiqueta"><label for="p-topp">Top-p</label><span class="valor" id="v-topp">0.95</span></div>
-      <input type="range" id="p-topp" min="0.05" max="1" step="0.05" value="0.95">
-    </div>
-    <div class="parametro">
-      <div class="etiqueta"><label for="p-maxtokens">Máximo de tokens de respuesta</label><span class="valor" id="v-maxtokens">512</span></div>
-      <input type="range" id="p-maxtokens" min="64" max="2048" step="32" value="512">
-    </div>
-
-    <h3>Prompt de sistema</h3>
-    <textarea id="prompt-sistema" spellcheck="false">Eres un asistente que funciona por completo en el navegador del usuario, sin servidores. Responde en español, con claridad y de forma concisa.</textarea>
-    <p class="ayuda-modelo">Se aplica al enviar el siguiente mensaje.</p>
-
-    <h3>Conversación</h3>
-    <button class="boton boton-secundario" id="btn-nueva" type="button">Nueva conversación</button>
-
-    <h3>Medidor</h3>
-    <div class="medidor">
-      <dl>
-        <dt>Búsqueda web</dt><dd id="m-busqueda">—</dd>
-        <dt>Primer token</dt><dd id="m-ttft">—</dd>
-        <dt>Prefill</dt><dd id="m-prefill">—</dd>
-        <dt>Decodificación</dt><dd id="m-decode">—</dd>
-        <dt>Tokens de la última respuesta</dt><dd id="m-tokens">—</dd>
-      </dl>
-    </div>
-    <p class="linea-gpu" id="linea-gpu">GPU: comprobando…</p>
-
-    <p class="enlaces">
-      Hecho con <a href="https://github.com/mlc-ai/web-llm" target="_blank" rel="noreferrer">web-llm</a> (MLC AI).
-      La búsqueda web consulta las APIs abiertas de Wikipedia (en español, con respaldo en inglés).
-      Esta página es un único archivo HTML.
-    </p>
   </aside>
 </main>
 
@@ -681,13 +751,60 @@ const MODELOS = [
     vramGB: "2,0",
     desc: "Tamaño comparable a Gemma 2B para comparar resultados.",
     grupo: "Otros modelos pequeños"
+  },
+  {
+    id: "gemma-2-9b-it-q4f16_1-MLC",
+    nombre: "Gemma 2 9B · q4f16",
+    vramGB: "6,4",
+    desc: "La hermana mayor de Gemma: respuestas mucho mejores, pero necesita una GPU con ≈6,4 GB libres y generará unas 3-4 veces más lento que la 2B.",
+    grupo: "Modelos grandes"
+  },
+  {
+    id: "Llama-3.1-8B-Instruct-q4f16_1-MLC",
+    nombre: "Llama 3.1 8B · q4f16",
+    vramGB: "5,0",
+    desc: "Un clásico sólido de propósito general; buen punto medio si la 9B no cabe en tu GPU.",
+    grupo: "Modelos grandes"
+  },
+  {
+    id: "Qwen3-8B-q4f16_1-MLC",
+    nombre: "Qwen3 8B · q4f16",
+    vramGB: "5,7",
+    desc: "Buena calidad general y multilingüe (incluido el español).",
+    grupo: "Modelos grandes"
+  },
+  {
+    id: "Mistral-7B-Instruct-v0.3-q4f16_1-MLC",
+    nombre: "Mistral 7B · q4f16",
+    vramGB: "4,6",
+    desc: "Muy eficiente para su tamaño: la más ligera del grupo de grandes.",
+    grupo: "Modelos grandes"
+  },
+  {
+    id: "Qwen3.5-9B-q4f16_1-MLC",
+    nombre: "Qwen3.5 9B · q4f16",
+    vramGB: "6,4",
+    desc: "La más reciente del catálogo en este tamaño, para comparar con Gemma 2 9B.",
+    grupo: "Modelos grandes"
   }
 ];
 const MODELO_POR_DEFECTO = "gemma-2-2b-it-q4f16_1-MLC";
+// Prompt de sistema por defecto. PROMPT_ANTIGUO sirve para migrar a quien ya
+// tenía guardada la versión que pedía respuestas "concisas" (ahora la
+// extensión se controla aparte con EXTENSIONES).
+const PROMPT_DEFECTO = "Eres un asistente que funciona por completo en el navegador del usuario, sin servidores. Responde en español y con claridad.";
+const PROMPT_ANTIGUO = "Eres un asistente que funciona por completo en el navegador del usuario, sin servidores. Responde en español, con claridad y de forma concisa.";
+// Extensión de la respuesta: ajusta la instrucción de redacción y (de forma
+// visible, moviendo el deslizador) el máximo de tokens generados.
+const EXTENSIONES = {
+  breve: { parrafos: "un solo párrafo breve", maxTokens: 256 },
+  normal: { parrafos: "2 a 3 párrafos", maxTokens: 512 },
+  extensa: { parrafos: "4 a 6 párrafos", maxTokens: 1280 }
+};
 const SUGERENCIAS = [
-  "Hazme un resumen de la historia de Venezuela.",
-  "¿Qué es WebGPU y por qué permite ejecutar IA en el navegador?",
-  "¿Quién fue Ada Lovelace y por qué se la considera la primera programadora?"
+  "¿Qué se investiga sobre inteligencia artificial en educación?",
+  "Busca estudios sobre contaminación del agua en Latinoamérica.",
+  "¿Qué publicaciones hay sobre políticas de acceso abierto?"
 ];
 
 // ---------- Referencias al DOM ----------
@@ -719,13 +836,19 @@ const ui = {
   temp: $("p-temperatura"), vTemp: $("v-temperatura"),
   topp: $("p-topp"), vTopp: $("v-topp"),
   maxTok: $("p-maxtokens"), vMaxTok: $("v-maxtokens"),
+  extension: $("p-extension"),
   promptSistema: $("prompt-sistema"),
   ttft: $("m-ttft"), prefill: $("m-prefill"), decode: $("m-decode"), tokens: $("m-tokens"),
   gpu: $("linea-gpu"),
-  barraBusqueda: $("barra-busqueda"),
   btnBusqueda: $("btn-busqueda"),
   textoBusqueda: $("texto-busqueda"),
-  mBusqueda: $("m-busqueda")
+  mBusqueda: $("m-busqueda"),
+  gClave: $("g-clave"),
+  gCx: $("g-cx"),
+  fuenteBusqueda: $("p-fuente"),
+  filaGoogle: $("fila-google"),
+  ayudaFuente: $("ayuda-fuente"),
+  fuenteIndicador: $("fuente-indicador")
 };
 
 // ---------- Estado de la aplicación ----------
@@ -737,6 +860,7 @@ let historial = [];     // mensajes que se envían al motor (incluye el prompt d
 let generando = false;
 let interrumpido = false;
 let tokenCarga = 0;     // para invalidar cargas canceladas o desfasadas
+let avisoClaveMostrado = false; // el aviso de clave falta solo se muestra una vez
 
 // ---------- Utilidades de estado ----------
 function pintarChip(texto, estadoChip) {
@@ -747,9 +871,7 @@ function alCambioDeEstado() {
   ui.vistaPortada.hidden = estado !== "portada";
   ui.vistaCarga.hidden = estado !== "cargando";
   ui.chat.style.display = (estado === "lista" || estado === "generando") ? "" : "none";
-  const visibilidadEscritor = (estado === "lista" || estado === "generando") ? "visible" : "hidden";
-  ui.escritor.style.visibility = visibilidadEscritor;
-  ui.barraBusqueda.style.visibility = visibilidadEscritor;
+  ui.escritor.style.visibility = (estado === "lista" || estado === "generando") ? "visible" : "hidden";
   const cargable = estado === "portada" || estado === "lista" || estado === "error";
   ui.btnCargar.disabled = !cargable;
   ui.btnCargarPanel.disabled = !cargable;
@@ -807,7 +929,11 @@ function guardarPrefs() {
       topp: ui.topp.value,
       maxTok: ui.maxTok.value,
       prompt: ui.promptSistema.value,
-      busqueda: BUSQUEDA.activada
+      extension: ui.extension.value,
+      busqueda: BUSQUEDA.activada,
+      claveGoogle: ui.gClave.value,
+      cxGoogle: ui.gCx.value,
+      fuenteBusqueda: ui.fuenteBusqueda.value
     }));
   } catch (e) { /* sin localStorage se siguen usando los valores por defecto */ }
 }
@@ -819,7 +945,15 @@ function restaurarPrefs() {
     if (p.temp != null) ui.temp.value = p.temp;
     if (p.topp != null) ui.topp.value = p.topp;
     if (p.maxTok != null) ui.maxTok.value = p.maxTok;
-    if (typeof p.prompt === "string" && p.prompt.length) ui.promptSistema.value = p.prompt;
+    if (typeof p.prompt === "string" && p.prompt.length) {
+      // Migración: la versión anterior del prompt pedía respuestas "concisas";
+      // ahora la extensión se controla con el selector aparte.
+      ui.promptSistema.value = p.prompt === PROMPT_ANTIGUO ? PROMPT_DEFECTO : p.prompt;
+    }
+    if (p.extension && EXTENSIONES[p.extension]) ui.extension.value = p.extension;
+    if (typeof p.claveGoogle === "string") ui.gClave.value = p.claveGoogle;
+    if (typeof p.cxGoogle === "string") ui.gCx.value = p.cxGoogle;
+    if (p.fuenteBusqueda === "google" || p.fuenteBusqueda === "lareferencia") ui.fuenteBusqueda.value = p.fuenteBusqueda;
     if (typeof p.busqueda === "boolean") BUSQUEDA.activada = p.busqueda;
   } catch (e) { /* ignorar y usar valores por defecto */ }
 }
@@ -858,7 +992,10 @@ function anadirMensaje(rol, texto) {
     cuerpo.className = "texto";
     div.appendChild(cuerpo);
   } else {
-    div.textContent = texto;
+    const burbuja = document.createElement("div");
+    burbuja.className = "burbuja";
+    burbuja.textContent = texto;
+    div.appendChild(burbuja);
   }
   ui.chat.appendChild(div);
   ui.chat.scrollTop = ui.chat.scrollHeight;
@@ -985,47 +1122,130 @@ function pintarErrorCarga(e) {
 }
 
 // ---------- Búsqueda web ----------
-// El demo consulta las APIs abiertas de Wikipedia (CORS permitido, sin claves):
-// primero en español y, si no hay resultados, reintenta en inglés. Devuelve
-// resultados normalizados { titulo, extracto, url } para que añadir otra
-// fuente (cualquier buscador con CORS abierto) sea solo reescribir esta función.
+// La búsqueda usa únicamente el índice de Google mediante su Custom Search
+// JSON API. Requiere una clave de API y el ID de un buscador programable
+// (cx), que se pegan en la franja inferior y se guardan en localStorage
+// (nunca en el código publicado). Sin clave no hay búsqueda: el modelo
+// responde con lo que sabe y cada respuesta lo indica.
 const BUSQUEDA = { activada: true };
 
-async function buscarEnWikipedia(consulta) {
-  const q = consulta.replace(/[¿?¡!.]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
-  if (!q) return [];
-  for (const idioma of ["es", "en"]) {
-    try {
-      const buscar = `https://${idioma}.wikipedia.org/w/api.php?action=query&list=search` +
-        `&srsearch=${encodeURIComponent(q)}&srlimit=4&srprop=snippet&format=json&origin=*`;
-      const r = await fetch(buscar, { signal: AbortSignal.timeout(9000) });
-      const datos = await r.json();
-      const hallazgos = datos?.query?.search || [];
-      if (!hallazgos.length) continue;
-      // Segunda llamada: intro de cada artículo en texto plano, todas a la vez.
-      const titulos = hallazgos.map(h => h.title).join("|");
-      const extractos = `https://${idioma}.wikipedia.org/w/api.php?action=query&prop=extracts|info` +
-        `&exintro=1&explaintext=1&exlimit=5&inprop=url&redirects=1` +
-        `&titles=${encodeURIComponent(titulos)}&format=json&origin=*`;
-      const r2 = await fetch(extractos, { signal: AbortSignal.timeout(9000) });
-      const d2 = await r2.json();
-      const porTitulo = new Map(Object.values(d2?.query?.pages || {}).map(p => [p.title, p]));
-      const resultados = [];
-      for (const h of hallazgos) {
-        const p = porTitulo.get(h.title);
-        const bruto = (p?.extract || h.snippet || "").replace(/\s+/g, " ").trim();
-        if (!bruto) continue;
-        resultados.push({
-          titulo: h.title,
-          extracto: bruto.slice(0, 1100),
-          url: p?.fullurl || `https://${idioma}.wikipedia.org/wiki/${encodeURIComponent(h.title.replace(/ /g, "_"))}`,
-          idioma
-        });
-      }
-      if (resultados.length) return resultados;
-    } catch (e) { /* sin red o API caída: probar el otro idioma o seguir sin contexto */ }
-  }
+function googleConfigurado() {
+  return ui.gClave.value.trim().length > 0 && ui.gCx.value.trim().length > 0;
+}
+
+// Búsqueda en LA Referencia: la red federada de repositorios académicos de
+// Latinoamérica (casi 6 millones de registros, VuFind 11). Su API REST v1 es
+// abierta y con CORS (access-control-allow-origin: *), así que el navegador
+// la llama directamente, sin claves ni servidor intermedio. Los registros no
+// traen resumen: el extracto se compone con autores, tipo y temas, y el
+// enlace lleva al registro del repositorio con el texto completo.
+// VuFind busca mejor con palabras clave que con preguntas completas:
+// "¿Qué soluciones hay para la contaminación?" → "soluciones contaminación".
+// Las muletillas se comparan sin acentos, palabra a palabra, para no depender
+// de la variante Unicode que produzca el teclado (NFC o NFD), pero las
+// palabras que se buscan conservan sus acentos originales.
+function palabrasClave(consulta) {
+  const crudo = consulta.normalize("NFC").replace(/[¿?¡!.,;:]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  if (!crudo) return "";
+  const sinAcentos = (palabra) => palabra.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const muletilla = new RegExp(
+    "^(que|como|cuando|cual(?:es)?|donde|quien(?:es)?|por que|hay|son|estan?|" +
+    "existe(?:n)?|sobre|acerca|para|por|del|de|la|el|los|las|un|una|unas|y|o|en|con|sin|" +
+    "mas|mejor(?:es)?|dime|hazme|haz|escribe|escribeme|resumeme|resume|resumen|hablame|" +
+    "quiero|puedes|podrias|podria|busca(?:rme|s)?|encuentra|busco|informacion|articulo[s]?|" +
+    "about|what|which|how|is|are|the|of|on|for|me|tell|please)$", "i");
+  const claves = crudo.split(" ")
+    .filter(p => p.length >= 3 && !muletilla.test(sinAcentos(p)))
+    .slice(0, 12)
+    .join(" ");
+  return claves || crudo;
+}
+
+async function buscarEnLaReferencia(q) {
+  try {
+    const consulta = palabrasClave(q);
+    if (!consulta) return [];
+    const url = "https://buscador.lareferencia.info/api/v1/search" +
+      `?lookfor=${encodeURIComponent(consulta)}&type=AllFields&limit=5`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    if (!r.ok) return [];
+    const datos = await r.json();
+    const resultados = [];
+    for (const reg of (datos.records || [])) {
+      if (!reg.title || !reg.urls || !reg.urls.length) continue;
+      const autores = [...Object.keys(reg.authors?.primary || {}), ...Object.keys(reg.authors?.secondary || {})]
+        .slice(0, 4).join("; ");
+      const temas = reg.subjects.flat().slice(0, 8).join(", ");
+      const extracto = [
+        autores ? "Autores: " + autores + "." : "",
+        "Tipo: " + ((reg.formats || [])[0] || "documento") + ".",
+        temas ? "Temas: " + temas + "." : ""
+      ].filter(Boolean).join(" ");
+      resultados.push({
+        titulo: reg.title,
+        extracto: extracto.slice(0, 600),
+        url: reg.urls[0].url,
+        fuente: "LA Referencia"
+      });
+    }
+    return resultados;
+  } catch (e) { /* sin red o API caída: seguir sin contexto */ }
   return [];
+}
+
+// Resultados del índice real de Google (Custom Search JSON API). El parámetro
+// es el texto tal cual del usuario: Google entiende preguntas naturales y no
+// necesita limpieza previa.
+async function buscarEnGoogle(q) {
+  const clave = ui.gClave.value.trim();
+  const cx = ui.gCx.value.trim();
+  if (!clave || !cx) return [];
+  try {
+    const url = "https://www.googleapis.com/customsearch/v1" +
+      `?key=${encodeURIComponent(clave)}&cx=${encodeURIComponent(cx)}` +
+      `&q=${encodeURIComponent(q)}&num=5&hl=es`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(9000) });
+    // 403/429 con la cuota agotada o clave inválida: seguir con DDG sin ruido
+    if (!r.ok) return [];
+    const datos = await r.json();
+    const resultados = [];
+    for (const item of (datos.items || [])) {
+      const extracto = limpiarHtml(item.snippet || "");
+      if (!extracto || !item.link) continue;
+      resultados.push({
+        titulo: item.title || item.link,
+        extracto: extracto.slice(0, 600),
+        url: item.link,
+        fuente: "Google"
+      });
+    }
+    return resultados;
+  } catch (e) { /* sin red o API caída: probar los buscadores de respaldo */ }
+  return [];
+}
+
+// Los snippets de Google llegan con HTML (<b>, entidades); se limpian
+// usando el propio DOM y quedan como texto plano.
+function limpiarHtml(texto) {
+  const div = document.createElement("div");
+  div.innerHTML = texto.replace(/<br\s*\/?>/gi, " ");
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+// Presupuesto de contexto: recorta los extractos para que la búsqueda nunca
+// desborde el contexto del modelo (4880 ≈ 1200 tokens de margen).
+function recortarResultados(resultados, presupuesto = 4800) {
+  let usado = 0;
+  const recortados = [];
+  for (const r of resultados) {
+    const coste = r.titulo.length + r.extracto.length + 8; // "[n] título: extracto\n\n"
+    if (usado + coste > presupuesto && recortados.length) break;
+    const extracto = r.extracto.slice(0, Math.max(120, presupuesto - usado - r.titulo.length - 8));
+    usado += r.titulo.length + extracto.length + 8;
+    recortados.push({ ...r, extracto });
+    if (usado >= presupuesto) break;
+  }
+  return recortados.length ? recortados : resultados.slice(0, 1);
 }
 
 function construirContextoBusqueda(resultados) {
@@ -1037,7 +1257,9 @@ function añadirFuentes(nodo, resultados) {
   div.className = "fuentes";
   const titulo = document.createElement("div");
   titulo.className = "titulo-fuentes";
-  titulo.textContent = "Fuentes consultadas en Wikipedia";
+  titulo.textContent = resultados[0]?.fuente === "LA Referencia"
+    ? "Fuentes encontradas en LA Referencia"
+    : "Fuentes encontradas con " + (resultados[0]?.fuente || "Google");
   const lista = document.createElement("ol");
   for (const r of resultados) {
     const li = document.createElement("li");
@@ -1060,6 +1282,19 @@ function pintarBusqueda() {
   ui.btnBusqueda.setAttribute("aria-pressed", String(BUSQUEDA.activada));
 }
 
+// La fila de claves de Google solo tiene sentido con Google elegido.
+function pintarFuente() {
+  const esGoogle = ui.fuenteBusqueda.value === "google";
+  ui.filaGoogle.classList.toggle("oculta", !esGoogle);
+  ui.fuenteIndicador.textContent = esGoogle ? "Google" : "LA Referencia";
+  ui.ayudaFuente.textContent = esGoogle
+    ? "Cada pregunta busca en el índice de Google (100 consultas gratis al día por clave). "
+      + "Sin clave el modelo responde sin contexto; los pasos están en el README."
+    : "LA Referencia busca en casi 6 millones de artículos y tesis de repositorios académicos "
+      + "de Latinoamérica, directamente desde tu navegador y sin claves. Google se activa "
+      + "elegiéndolo arriba y pegando tu clave (pasos en el README).";
+}
+
 // ---------- Envío de mensaje y streaming ----------
 async function enviar() {
   const texto = ui.entrada.value.trim();
@@ -1076,18 +1311,32 @@ async function enviar() {
   estado = "generando"; generando = true; interrumpido = false;
   alCambioDeEstado();
 
-  // Si la búsqueda web está activada, consultamos Wikipedia antes de generar.
+  // Búsqueda web con Google (si está activada y hay clave configurada).
   let resultados = [];
   let seBusco = false;
-  if (BUSQUEDA.activada) {
+  let faltaClave = false;
+  const usarGoogle = ui.fuenteBusqueda.value === "google";
+  if (BUSQUEDA.activada && usarGoogle && !googleConfigurado()) {
+    // Sin clave de Google no hay búsqueda posible: se avisa una vez y se
+    // responde sin contexto, indicándolo en el pie de la respuesta.
+    faltaClave = true;
+    if (!avisoClaveMostrado) {
+      avisoClaveMostrado = true;
+      avisoEnChat("Falta la clave de Google para buscar en la web.",
+        "Consíguela gratis (los pasos están en el README del proyecto) y pégala en " +
+        "«Fuente de búsqueda web», en la franja de Controles. Mientras tanto el " +
+        "modelo responde con lo que sabe.");
+    }
+  } else if (BUSQUEDA.activada) {
     seBusco = true;
     pintarChip("Buscando en la web…", "generando");
     const avisoBusqueda = document.createElement("div");
     avisoBusqueda.className = "buscando-estado";
-    avisoBusqueda.textContent = "Buscando en Wikipedia (es, luego en)…";
+    avisoBusqueda.textContent = usarGoogle ? "Buscando con Google…" : "Buscando en LA Referencia…";
     burbuja.appendChild(avisoBusqueda);
     const tBusqueda = performance.now();
-    resultados = await buscarEnWikipedia(texto);
+    const hallados = usarGoogle ? await buscarEnGoogle(texto) : await buscarEnLaReferencia(texto);
+    resultados = recortarResultados(hallados);
     avisoBusqueda.remove();
     ui.mBusqueda.textContent = ((performance.now() - tBusqueda) / 1000)
       .toLocaleString("es-ES", { maximumFractionDigits: 2 }) + " s";
@@ -1105,6 +1354,7 @@ async function enviar() {
   } else {
     ui.mBusqueda.textContent = "—";
   }
+  if (faltaClave) ui.mBusqueda.textContent = "—";
   pintarChip("Generando…", "generando");
 
   const t0 = performance.now();
@@ -1114,11 +1364,15 @@ async function enviar() {
     // copia puede llevar el contexto de búsqueda sin ensuciar la conversación.
     const mensajes = historial.map(m => ({ ...m }));
     if (resultados.length) {
+      const etiquetaFuente = resultados[0]?.fuente || "Google";
+      const extension = EXTENSIONES[ui.extension.value] || EXTENSIONES.normal;
       mensajes[mensajes.length - 1].content =
         `Pregunta: ${texto}\n\n` +
-        `Resultados de búsqueda (Wikipedia):\n${construirContextoBusqueda(resultados)}\n\n` +
-        `Instrucción: responde en español a la Pregunta apoyándote en los Resultados de búsqueda ` +
-        `y citándolos entre corchetes como [1], [2]… Si no te sirven, dilo y responde con lo que sepas.`;
+        `Resultados de búsqueda (${etiquetaFuente}):\n${construirContextoBusqueda(resultados)}\n\n` +
+        `Instrucción: redacta en español una respuesta de ${extension.parrafos} que articule la ` +
+        `información de los Resultados de búsqueda: combina y contrasta varias fuentes en lugar de ` +
+        `resumir una sola, y cita cada dato con su número entre corchetes, como [1] o [2]. ` +
+        `Si los resultados no bastan o se contradicen entre sí, dilo y completa con lo que sepas.`;
     }
     const params = {
       messages: mensajes,
@@ -1155,7 +1409,8 @@ async function enviar() {
   }
   const partesPie = [];
   if (uso) partesPie.push(`${uso.completion_tokens} tokens generados`);
-  if (seBusco && !resultados.length) partesPie.push("sin resultados en Wikipedia");
+  if (faltaClave) partesPie.push("sin búsqueda web: falta la clave de Google");
+  else if (seBusco && !resultados.length) partesPie.push("sin resultados en " + (usarGoogle ? "Google" : "LA Referencia"));
   alTerminarMensaje(burbuja, interrumpido, partesPie.join(" · ") || null);
   if (resultados.length) añadirFuentes(burbuja, resultados);
   pintarMedidor(uso, ttft);
@@ -1273,6 +1528,12 @@ restaurarPrefs();
 ui.selectPanel.value = ui.select.value;
 alSeleccionarModelo();
 pintarBusqueda();
+pintarFuente();
+// En escritorio la franja de controles empieza abierta; en móvil, cerrada.
+if (window.matchMedia("(min-width: 881px)").matches) {
+  ui.panel.classList.add("abierto");
+  ui.btnControlesMovil.setAttribute("aria-expanded", "true");
+}
 
 ui.select.addEventListener("change", () => sincronizarSelectores(ui.select));
 ui.selectPanel.addEventListener("change", () => sincronizarSelectores(ui.selectPanel));
@@ -1294,9 +1555,26 @@ ui.entrada.addEventListener("keydown", (e) => {
 ui.temp.addEventListener("input", () => { ui.vTemp.textContent = parseFloat(ui.temp.value).toFixed(2); guardarPrefs(); });
 ui.topp.addEventListener("input", () => { ui.vTopp.textContent = parseFloat(ui.topp.value).toFixed(2); guardarPrefs(); });
 ui.maxTok.addEventListener("input", () => { ui.vMaxTok.textContent = ui.maxTok.value; guardarPrefs(); });
+ui.extension.addEventListener("change", () => {
+  const ext = EXTENSIONES[ui.extension.value];
+  if (ext) {
+    // La extensión elegida mueve el deslizador de tokens de forma visible,
+    // para que el límite nunca corte la respuesta a mitad de párrafo.
+    ui.maxTok.value = ext.maxTokens;
+    ui.vMaxTok.textContent = ext.maxTokens;
+  }
+  guardarPrefs();
+});
+ui.gClave.addEventListener("input", guardarPrefs);
+ui.gCx.addEventListener("input", guardarPrefs);
+ui.fuenteBusqueda.addEventListener("change", () => { pintarFuente(); guardarPrefs(); });
 ui.btnControlesMovil.addEventListener("click", () => {
   const abrir = ui.panel.classList.toggle("abierto");
-  if (abrir) ui.panel.scrollIntoView({ behavior: "smooth" });
+  ui.btnControlesMovil.setAttribute("aria-expanded", String(abrir));
+  if (abrir) {
+    const suave = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    ui.panel.scrollIntoView({ behavior: suave ? "smooth" : "auto" });
+  }
 });
 
 // ---------- Objeto de depuración (útil desde la consola y para pruebas) ----------
@@ -1306,7 +1584,8 @@ window.DemoWebLLM = {
   get historial() { return historial; },
   engine: () => engine,
   webllm: () => webllm,
-  buscar: buscarEnWikipedia,
+  buscar: buscarEnGoogle,
+  buscarLA: buscarEnLaReferencia,
   // Funciones de simulación, solo para pruebas visuales sin descargar un modelo:
   _simular: {
     cargando(pct = 42, texto = "Fetching param cache[12/34]: 580MB loaded") {
